@@ -74,11 +74,11 @@ This step transforms tick-level trades into evenly spaced bars that downstream c
 
 For each contiguous sequence of bars:
 1. Compute per-bar log returns and rolling volatility estimates.
-2. Construct a 12-dimensional feature vector comprising:
-   - Close price, VWAP, log return.
-   - Relative range (`spread / close`), body-to-open ratio, shadow-to-close ratios.
-   - Volume, notional value, buy-volume ratio, signed volume share.
-   - Rolling volatility estimate.
+2. Construct a 22-dimensional feature vector comprising:
+   - Price action ratios: close, VWAP, log return, spread/close, body/open, and upper/lower shadows.
+   - Volume analytics: raw volume, notional value, buy-volume share, signed volume delta, and volume vs. 20-bar SMA.
+   - Volatility metrics: rolling return stdev, ATR/close, and Bollinger-percent position.
+   - Trend/oscillator signals: close vs. SMA20/EMA12, RSI14, MACD line & signal, TSI (25/13), and 5-bar momentum.
 3. Slice the bar series into overlapping `windowSize` sequences (default 64 bars).
 4. Optionally z-score each column within the window to normalize features.
 5. Derive a binary label for the next bar (`1` if `nextClose > lastClose`, else `0`).
@@ -104,7 +104,7 @@ The final window is reserved for inference; earlier windows feed model training.
 1. Defines `TcnConfig` with tunable hyperparameters:
    - `filtersPerLayer`, `kernelSize`, `dropoutRate`, `denseUnits`, `learningRate`.
 2. Builds a causal temporal convolutional network:
-   - Stacks residual Conv1D blocks with exponentially increasing dilation (1, 2, 4, …).
+   - Stacks residual Conv1D blocks (dilation fixed at 1 in tfjs-node for gradient stability).
    - Applies layer normalization and ReLU activations inside each block.
    - Aggregates skip connections, performs global average pooling.
    - Adds a dense “embedding” layer before a single-unit sigmoid output for probability.
@@ -152,9 +152,9 @@ The risk map is where the “secret sauce” modulates raw model output accordin
 Detailed execution order when `runTradingCycle` is invoked:
 
 1. **Configuration unpacking** – reads symbol, history length, bar interval, window size, client/model/training/risk configs, and volatility lookback.
-2. **Trade fetch** – retrieves up to 500 trades from KuCoin.
+2. **Trade fetch** – retrieves the requested history (default 500, but the engine can page back thousands of trades when `TRADE_HISTORY_LIMIT` is higher).
 3. **Bar construction** – aggregates trades into `TradeBar`s using the requested interval.
-4. **Feature window generation** – builds overlapping normalized windows and labels.
+4. **Feature window generation** – builds overlapping normalized windows and labels, with 22 engineered features per bar (price/volume ratios, moving-average differentials, RSI, MACD, TSI, ATR scaling, momentum, Bollinger position, and more).
 5. **Training sample split** – uses all but the last window for training; reserves the last for inference.
 6. **Model instantiation** – builds a TCN tailored to the effective window size and feature count, overlaying any user-defined hyperparameters.
 7. **Model training (optional)** – if training samples exist:

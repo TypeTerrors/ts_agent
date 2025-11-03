@@ -16,7 +16,7 @@ The model is constructed in `src/model/tcn.ts`. Below is the standard configurat
 
 1. **Input Layer**
    - Shape: `windowSize × featureCount`
-   - Default `windowSize = 64`, `featureCount = 12` (each row corresponds to one bar; each column is a feature such as log return, volume, VWAP, etc.).
+   - Default `windowSize = 64`, `featureCount = 22` (each timestep bundles price action ratios, moving-average differentials, RSI, MACD, TSI, ATR scaling, momentum, Bollinger placement, and volume-relative statistics).
 2. **Residual Blocks (3 by default)**
    - Each block uses:
      - **Conv1D #1**: filters=32/64/64, kernel=3, dilation=1, padding=`same`, activation=`relu`
@@ -79,7 +79,7 @@ Dense (1 unit, Sigmoid) → Probability of Up Move
 ## 4. How This Network Differs from Typical Setups
 
 1. **Feature-rich inputs**
-   - Instead of raw price-only series, every timestep includes engineered features (log returns, spread/close ratios, volume ratios, volatility estimates). This reduces the network’s burden to discover basic relationships from scratch.
+   - Instead of raw price-only series, every timestep includes 22 engineered features (log returns, price/volume ratios, moving-average spreads, oscillators like RSI/MACD/TSI, ATR-based volatility, momentum, Bollinger percent, and more). This reduces the network’s burden to discover basic relationships from scratch.
 2. **Short-window design**
    - Tunable `windowSize` allows the model to be adapted for sparse or dense markets. The ability to shrink the window ensures you can still train with limited history.
 3. **Dropout + Normalization in Residual Blocks**
