@@ -8,23 +8,21 @@ services:
     environment:
       # --- Core symbol & scheduling ---
       TICKET: "${TICKET:-BTC-USDT}"
-      RUN_INTERVAL_MINUTES: "${RUN_INTERVAL_MINUTES:-15}"
+      RUN_INTERVAL_MINUTES: "${RUN_INTERVAL_MINUTES:-5}"
       LOG_FILE: "${LOG_FILE:-logs/trading.log}"
       MODEL_STORE_PATH: "${MODEL_STORE_PATH:-models}"
-      # BAR_INTERVAL_MINUTES: "1"           # Example: aggregate trades into 1-minute bars
-      # FEATURE_WINDOW_SIZE: "64"           # Example: number of bars per feature window
-      # TRAINING_EPOCHS: "8"                # Example: training epochs per cycle
-      # TCN_FILTERS: "32,64,64"             # Example: filters per residual block
-      # RISK_NEUTRAL_ZONE: "0.05"           # Example: neutral deadband size
-      # 
+      TRADE_HISTORY_LIMIT: "${TRADE_HISTORY_LIMIT:-5000}"
+      BAR_INTERVAL_MINUTES: "${BAR_INTERVAL_MINUTES:-0.5}"
+      FEATURE_WINDOW_SIZE: "${FEATURE_WINDOW_SIZE:-48}"
+      TRAINING_EPOCHS: "${TRAINING_EPOCHS:-16}"
+      TRAINING_BATCH_SIZE: "${TRAINING_BATCH_SIZE:-32}"
+      TRAINING_VAL_SPLIT: "${TRAINING_VAL_SPLIT:-0.1}"
+      TCN_FILTERS: "${TCN_FILTERS:-64,128,128}"
+      TCN_KERNEL: "${TCN_KERNEL:-5}"
+      TCN_DROPOUT: "${TCN_DROPOUT:-0.2}"
+      RISK_NEUTRAL_ZONE: "${RISK_NEUTRAL_ZONE:-0.05}"
+      RISK_VOL_TARGET: "${RISK_VOL_TARGET:-0.015}"
       # KUCOIN_BASE_URL: "https://api.kucoin.com"  # Override KuCoin endpoint if needed
-      # 
-      # --- Deep Lookback ---
-      # BAR_INTERVAL_MINUTES=0.5 
-      # FEATURE_WINDOW_SIZE=48 
-      # TRAINING_EPOCHS=16 
-      # TRADE_HISTORY_LIMIT=5000 
-      # RUN_INTERVAL_MINUTES=5 
     volumes:
       - ./logs:/app/logs
       - ./models:/app/models
