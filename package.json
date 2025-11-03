@@ -1,0 +1,26 @@
+{
+  "name": "ts_trade",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node --loader ts-node/esm src/index.ts",
+    "start:short-window": "FEATURE_WINDOW_SIZE=32 BAR_INTERVAL_MINUTES=0.25 TRAINING_EPOCHS=12 RUN_INTERVAL_MINUTES=5 node --loader ts-node/esm src/index.ts",
+    "start:deep-lookback": "TRADE_HISTORY_LIMIT=5000 FEATURE_WINDOW_SIZE=48 BAR_INTERVAL_MINUTES=0.5 TRAINING_EPOCHS=16 RUN_INTERVAL_MINUTES=5 node --loader ts-node/esm src/index.ts",
+    "test": "npm run build"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@tensorflow/tfjs-node": "^4.22.0",
+    "axios": "^1.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}

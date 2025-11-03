@@ -1,0 +1,31 @@
+version: "3.9"
+
+services:
+  ts_trade:
+    build: .
+    container_name: ts_trade
+    restart: unless-stopped
+    environment:
+      # --- Core symbol & scheduling ---
+      TICKET: "${TICKET:-BTC-USDT}"
+      RUN_INTERVAL_MINUTES: "${RUN_INTERVAL_MINUTES:-15}"
+      LOG_FILE: "${LOG_FILE:-logs/trading.log}"
+      MODEL_STORE_PATH: "${MODEL_STORE_PATH:-models}"
+      # BAR_INTERVAL_MINUTES: "1"           # Example: aggregate trades into 1-minute bars
+      # FEATURE_WINDOW_SIZE: "64"           # Example: number of bars per feature window
+      # TRAINING_EPOCHS: "8"                # Example: training epochs per cycle
+      # TCN_FILTERS: "32,64,64"             # Example: filters per residual block
+      # RISK_NEUTRAL_ZONE: "0.05"           # Example: neutral deadband size
+      # 
+      # KUCOIN_BASE_URL: "https://api.kucoin.com"  # Override KuCoin endpoint if needed
+      # 
+      # --- Deep Lookback ---
+      # BAR_INTERVAL_MINUTES=0.5 
+      # FEATURE_WINDOW_SIZE=48 
+      # TRAINING_EPOCHS=16 
+      # TRADE_HISTORY_LIMIT=5000 
+      # RUN_INTERVAL_MINUTES=5 
+    volumes:
+      - ./logs:/app/logs
+      - ./models:/app/models
+    command: ["node", "dist/index.js"]
