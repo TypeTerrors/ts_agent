@@ -79,6 +79,15 @@ services:
       - ws_api
     ports:
       - "${DASHBOARD_PORT_EXPOSE:-4173}:80"
-
+  # Tunnel for your main UI host (Access-protected)
+  dashboard-tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${TUNNEL_DASHBOARD}
+  # Tunnel for your main UI host (Access-protected)
+  websocket-tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${TUNNEL_SOCKET}
 volumes:
   postgres_data:
