@@ -1,6 +1,8 @@
 import axios from "axios";
+
 import type { AxiosInstance } from "axios";
 import type { KucoinTrade } from "../types.js";
+import { writeLog } from "../index.js";
 
 export interface KucoinClientConfig {
   baseURL?: string;
@@ -43,6 +45,8 @@ export class KucoinClient {
         },
       },
     );
+
+    writeLog(`Kucoin response status ${response.status} Kucoin message ${response.statusText}`)
 
     return response.data.data.map((trade) => ({
       sequence: trade.sequence,
