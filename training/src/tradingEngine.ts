@@ -1,7 +1,7 @@
 import * as tf from "@tensorflow/tfjs-node";
 import { access, mkdir } from "node:fs/promises";
 import { constants } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { KucoinClient } from "./client/kucoinClient.js";
 import type { KucoinClientConfig } from "./client/kucoinClient.js";
 import { buildBarsFromTrades } from "./data/barBuilder.js";
@@ -128,7 +128,10 @@ export const runTradingCycle = async (
   const featureCount = firstRow.length;
   const effectiveWindowSize = latestWindow.window.length;
 
-  const modelStorePath = process.env.MODEL_STORE_PATH ?? "models";
+  const configuredStore = process.env.MODEL_STORE_PATH ?? "/app/models";
+  const modelStorePath = isAbsolute(configuredStore)
+    ? configuredStore
+    : resolve(process.cwd(), configuredStore);
   const symbolKey = sanitizeSymbol(symbol);
   const modelDir = join(modelStorePath, symbolKey);
   const modelJsonPath = join(modelDir, "model.json");
