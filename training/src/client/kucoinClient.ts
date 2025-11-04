@@ -46,7 +46,7 @@ export class KucoinClient {
       },
     );
 
-    writeLog(`Kucoin response status ${response.status} Kucoin message ${response.statusText} Kucoin Data ${response.data.data}`)
+    writeLog(`Kucoin response status ${response.status} Kucoin message ${response.statusText}`)
 
     return response.data.data.map((trade) => ({
       sequence: trade.sequence,
