@@ -2,15 +2,20 @@ version: "3.9"
 
 services:
   ts_trade:
-    build: .
+    build:
+      context: .
+      dockerfile: training/Dockerfile
     container_name: ts_trade
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
       # --- Core symbol & scheduling ---
       TICKET: "${TICKET:-BTC-USDT}"
       RUN_INTERVAL_MINUTES: "${RUN_INTERVAL_MINUTES:-5}"
-      LOG_FILE: "${LOG_FILE:-logs/trading.log}"
-      MODEL_STORE_PATH: "${MODEL_STORE_PATH:-models}"
+      LOG_FILE: "${LOG_FILE:-/app/logs/trading.log}"
+      MODEL_STORE_PATH: "${MODEL_STORE_PATH:-/app/models}"
       TRADE_HISTORY_LIMIT: "${TRADE_HISTORY_LIMIT:-5000}"
       BAR_INTERVAL_MINUTES: "${BAR_INTERVAL_MINUTES:-0.5}"
       FEATURE_WINDOW_SIZE: "${FEATURE_WINDOW_SIZE:-48}"
@@ -22,8 +27,76 @@ services:
       TCN_DROPOUT: "${TCN_DROPOUT:-0.2}"
       RISK_NEUTRAL_ZONE: "${RISK_NEUTRAL_ZONE:-0.05}"
       RISK_VOL_TARGET: "${RISK_VOL_TARGET:-0.015}"
+      PG_HOST: "${PG_HOST:-postgres}"
+      PG_PORT: "${PG_PORT:-5432}"
+      PG_USER: "${PG_USER:-trader}"
+      PG_PASSWORD: "${PG_PASSWORD:-traderpass}"
+      PG_DATABASE: "${PG_DATABASE:-trading}"
       # KUCOIN_BASE_URL: "https://api.kucoin.com"  # Override KuCoin endpoint if needed
     volumes:
       - ./logs:/app/logs
       - ./models:/app/models
     command: ["node", "dist/index.js"]
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: ts_trade_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: "${PG_USER:-trader}"
+      POSTGRES_PASSWORD: "${PG_PASSWORD:-traderpass}"
+      POSTGRES_DB: "${PG_DATABASE:-trading}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${PG_PORT_EXPOSE:-5432}:${PG_PORT:-5432}"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-trader} -d ${PG_DATABASE:-trading}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  ws_api:
+    build:
+      context: ./api
+    container_name: ts_trade_ws
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PG_HOST: "${PG_HOST:-postgres}"
+      PG_PORT: "${PG_PORT:-5432}"
+      PG_USER: "${PG_USER:-trader}"
+      PG_PASSWORD: "${PG_PASSWORD:-traderpass}"
+      PG_DATABASE: "${PG_DATABASE:-trading}"
+      PG_SSLMODE: "${PG_SSLMODE:-disable}"
+      API_PORT: "${API_PORT:-8080}"
+    ports:
+      - "${API_PORT_EXPOSE:-8080}:${API_PORT:-8080}"
+
+  dashboard:
+    build:
+      context: ./fed
+      args:
+        VITE_WS_URL: "${VITE_WS_URL:-ws://ts_trade_ws:8080/ws}"
+    container_name: ts_trade_dashboard
+    restart: unless-stopped
+    depends_on:
+      ws_api:
+        condition: service_started
+    ports:
+      - "${DASHBOARD_PORT_EXPOSE:-4173}:80"
+  # Tunnel for your main UI host (Access-protected)
+  dashboard-tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${TUNNEL_DASHBOARD}
+  # Tunnel for your main UI host (Access-protected)
+  websocket-tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${TUNNEL_SOCKET}
+volumes:
+  postgres_data:

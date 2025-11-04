@@ -1,0 +1,45 @@
+# syntax=docker/dockerfile:1
+
+FROM node:18-slim AS builder
+
+ENV npm_config_unsafe_perm=true
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential python3 libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app/training
+
+COPY training/package.json training/package-lock.json ./
+RUN npm ci --unsafe-perm
+RUN npm rebuild @tensorflow/tfjs-node --unsafe-perm --build-from-source
+
+COPY training/tsconfig.json ./
+COPY training/src ./src
+
+RUN npm run build
+
+# remove dev dependencies after build so copied node_modules stays lean
+RUN npm prune --omit=dev
+
+FROM node:18-slim AS runner
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+ENV NODE_ENV=production
+WORKDIR /app/training
+ENV LD_LIBRARY_PATH=/app/training/node_modules/@tensorflow/tfjs-node/lib:/app/training/node_modules/@tensorflow/tfjs-node/deps/lib:${LD_LIBRARY_PATH}
+
+COPY --from=builder /app/training/package.json ./
+COPY --from=builder /app/training/package-lock.json ./
+COPY --from=builder /app/training/node_modules ./node_modules
+COPY --from=builder /app/training/dist ./dist
+COPY README.md /app/README.md
+
+RUN mkdir -p /app/logs /app/models
+
+ENV LOG_FILE=/app/logs/trading.log \
+    MODEL_STORE_PATH=/app/models
+
+CMD ["node", "dist/index.js"]

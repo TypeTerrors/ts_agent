@@ -2,4 +2,8 @@ dist/
 .env
 logs/
 node_modules/
+training/node_modules/
 models/
+training/dist/
+fed/node_modules/
+fed/dist/

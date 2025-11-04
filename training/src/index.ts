@@ -3,6 +3,8 @@ import { dirname, resolve } from "node:path";
 import { runTradingCycle } from "./tradingEngine.js";
 import type { TradingEngineConfig } from "./tradingEngine.js";
 import type { KucoinClientConfig } from "./client/kucoinClient.js";
+import type { PostgresConfig } from "./db/postgres.js";
+import { PredictionRepository } from "./db/postgres.js";
 
 type Env = NodeJS.ProcessEnv;
 
@@ -44,6 +46,28 @@ const writeLog = async (message: string) => {
   console.log(formatted);
   await ensureLogDir();
   await appendFile(LOG_FILE, `${formatted}\n`);
+};
+
+const buildPostgresConfig = (): PostgresConfig | null => {
+  const host = process.env.PG_HOST;
+  const database = process.env.PG_DATABASE;
+  const user = process.env.PG_USER;
+  const password = process.env.PG_PASSWORD ?? "";
+  if (!host || !database || !user) {
+    return null;
+  }
+  const port = Number.parseInt(process.env.PG_PORT ?? "5432", 10);
+  const ssl =
+    process.env.PG_SSL?.toLowerCase() === "true" ||
+    process.env.PG_SSL?.toLowerCase() === "1";
+  return {
+    host,
+    database,
+    user,
+    password,
+    port: Number.isFinite(port) ? port : 5432,
+    ssl,
+  };
 };
 
 const buildClientConfig = (env: Env): KucoinClientConfig | undefined => {
@@ -128,6 +152,27 @@ const start = async () => {
     `Initialized trading engine for ticket=${ticket}, interval=${runIntervalMinutes}min, log=${LOG_FILE}`,
   );
 
+  const pgConfig = buildPostgresConfig();
+  let repository: PredictionRepository | null = null;
+  if (pgConfig) {
+    try {
+      repository = await PredictionRepository.initialize(pgConfig);
+      await writeLog(
+        `Connected to Postgres at ${pgConfig.host}:${pgConfig.port}/${pgConfig.database}`,
+      );
+    } catch (error) {
+      await writeLog(
+        `Failed to initialize Postgres repository: ${(error as Error)?.message ?? String(
+          error,
+        )}`,
+      );
+    }
+  } else {
+    await writeLog(
+      "Postgres configuration not provided; prediction payloads will not be persisted.",
+    );
+  }
+
   let isRunning = false;
   let cycle = 0;
 
@@ -159,6 +204,15 @@ const start = async () => {
       await writeLog(
         `Cycle #${cycle} prediction payload:\n${JSON.stringify(payload, null, 2)}`,
       );
+      if (repository) {
+        try {
+          await repository.savePrediction(payload);
+        } catch (error) {
+          await writeLog(
+            `Failed to persist prediction: ${(error as Error)?.message ?? String(error)}`,
+          );
+        }
+      }
     } catch (error) {
       const err = error as Error;
       await writeLog(
@@ -180,6 +234,15 @@ const start = async () => {
   const shutdown = async (signal: NodeJS.Signals) => {
     clearInterval(interval);
     await writeLog(`Received ${signal}. Shutting down gracefully.`);
+    if (repository) {
+      try {
+        await repository.close();
+      } catch (error) {
+        await writeLog(
+          `Error closing Postgres connection: ${(error as Error)?.message ?? String(error)}`,
+        );
+      }
+    }
     process.exit(0);
   };
 
