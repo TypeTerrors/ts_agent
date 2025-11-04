@@ -2,7 +2,9 @@ version: "3.9"
 
 services:
   ts_trade:
-    build: ./training
+    build:
+      context: .
+      dockerfile: training/Dockerfile
     container_name: ts_trade
     restart: unless-stopped
     depends_on:
@@ -11,8 +13,8 @@ services:
       # --- Core symbol & scheduling ---
       TICKET: "${TICKET:-BTC-USDT}"
       RUN_INTERVAL_MINUTES: "${RUN_INTERVAL_MINUTES:-5}"
-      LOG_FILE: "${LOG_FILE:-logs/trading.log}"
-      MODEL_STORE_PATH: "${MODEL_STORE_PATH:-models}"
+      LOG_FILE: "${LOG_FILE:-/app/logs/trading.log}"
+      MODEL_STORE_PATH: "${MODEL_STORE_PATH:-/app/models}"
       TRADE_HISTORY_LIMIT: "${TRADE_HISTORY_LIMIT:-5000}"
       BAR_INTERVAL_MINUTES: "${BAR_INTERVAL_MINUTES:-0.5}"
       FEATURE_WINDOW_SIZE: "${FEATURE_WINDOW_SIZE:-48}"
