@@ -1,6 +1,6 @@
 # ts_trade Neural Trading Engine
 
-This project builds a TypeScript-based neural trading engine that consumes KuCoin trade data, aggregates it into feature-rich windows, feeds those windows into a temporal convolutional network (TCN), and adjusts model-driven signals with a risk map to produce bounded exposure guidance.
+This project builds a TypeScript-based neural trading engine that consumes KuCoin trade data, aggregates it into feature-rich windows, feeds those windows into a temporal convolutional network (TCN), and adjusts model-driven signals with a risk map to produce bounded exposure guidance. The training runtime lives under `training/`, while a Go websocket API under `api/` streams new predictions to subscribers.
 
 The sections below walk through the entire flow—data ingestion, feature construction, model training, risk management, and decision output—in the exact order that the application executes. Setup and run instructions follow at the end.
 
@@ -14,23 +14,23 @@ The sections below walk through the entire flow—data ingestion, feature constr
 
 2. **Install dependencies**
    ```bash
+   cd training
    npm install
    ```
    This pulls the runtime libraries (`@tensorflow/tfjs-node`, `axios`) and development tooling (`typescript`, `ts-node`, `@types/node`).
 
 3. **Project layout essentials**
-   - `src/client/` – KuCoin API client.
-   - `src/data/` – Trade aggregation and feature extraction.
-   - `src/model/` – Neural network model definition and training helpers.
-   - `src/risk/` – Risk map utilities.
-   - `src/tradingEngine.ts` – Orchestrates the full trading decision loop.
-   - `src/index.ts` – CLI entry point.
+   - `training/src/` – TypeScript trading engine (client, data, model, risk, orchestration).
+   - `training/package.json` – npm scripts and dependencies for the trainer.
+   - `api/` – Go websocket API that relays prediction inserts from Postgres to connected clients (`/ws`).
+   - `fed/` – React + Tailwind dashboard (shadcn-inspired UI) that subscribes to the websocket feed.
+   - `docker-compose.yml` – Spins up the trainer, Postgres, and websocket API on a single network.
 
 ---
 
 ## 2. Data Acquisition (KuCoin REST Client)
 
-**File:** `src/client/kucoinClient.ts`
+**File:** `training/src/client/kucoinClient.ts`
 
 1. Builds an `AxiosInstance` that defaults to `https://api.kucoin.com`.
 2. Exposes `fetchRecentTrades(symbol, limit)`:
@@ -70,7 +70,7 @@ This step transforms tick-level trades into evenly spaced bars that downstream c
 
 ## 4. Feature Engineering & Labeling
 
-**File:** `src/data/featureExtractor.ts`
+**File:** `training/src/data/featureExtractor.ts`
 
 For each contiguous sequence of bars:
 1. Compute per-bar log returns and rolling volatility estimates.
@@ -99,7 +99,7 @@ The final window is reserved for inference; earlier windows feed model training.
 
 ## 5. Neural Model Definition (TCN)
 
-**File:** `src/model/tcn.ts`
+**File:** `training/src/model/tcn.ts`
 
 1. Defines `TcnConfig` with tunable hyperparameters:
    - `filtersPerLayer`, `kernelSize`, `dropoutRate`, `denseUnits`, `learningRate`.
@@ -116,7 +116,7 @@ The architecture outputs the probability that the next bar closes higher than th
 
 ## 6. Training Helpers
 
-**File:** `src/model/trainer.ts`
+**File:** `training/src/model/trainer.ts`
 
 1. `tensorsFromWindows`:
    - Converts an array of feature windows into `tf.Tensor3D` inputs (`batch × window × features`) and `tf.Tensor2D` labels.
@@ -131,7 +131,7 @@ The trading engine uses these helpers to train (or fine-tune) the TCN on recent 
 
 ## 7. Risk Map & Signal Scaling
 
-**File:** `src/risk/riskMap.ts`
+**File:** `training/src/risk/riskMap.ts`
 
 1. `computeReturns` – converts bars to log returns (for volatility assessment).
 2. `computeForecastVolatility` – calculates trailing volatility using a configurable lookback, defaulting to the target if insufficient data exists.
@@ -147,7 +147,7 @@ The risk map is where the “secret sauce” modulates raw model output accordin
 
 ## 8. Trading Engine Orchestration
 
-**File:** `src/tradingEngine.ts`
+**File:** `training/src/tradingEngine.ts`
 
 Detailed execution order when `runTradingCycle` is invoked:
 
@@ -209,11 +209,13 @@ This entry point is how you interact with the system in batch mode.
 
 1. **Compile TypeScript to JavaScript**
    ```bash
+   cd training
    npm run build
    ```
 
 2. **Run the trading cycle directly (on-the-fly compilation)**
    ```bash
+   cd training
    npm start
    ```
    or provide custom environment variables:
@@ -222,20 +224,23 @@ This entry point is how you interact with the system in batch mode.
    ```
    For symbols with sparse trade data, you can shrink the feature window and the candle interval using the provided helper script:
    ```bash
+   cd training
    npm run start:short-window
    ```
    This script sets `FEATURE_WINDOW_SIZE=32`, `BAR_INTERVAL_MINUTES=0.25`, `TRAINING_EPOCHS=12`, and `RUN_INTERVAL_MINUTES=5`, which helps ensure enough samples are available for training.
 
    To gather a larger historical lookback each cycle, use the deep-lookback helper which pages through the KuCoin trade history endpoint until it amasses ~5,000 trades:
    ```bash
+   cd training
    npm run start:deep-lookback
    ```
 
    The trained model is saved under `models/<symbol>/` by default; override with `MODEL_STORE_PATH` if you need a different location. When running in Docker, mount a host volume to this directory so weights persist across container restarts. The process will continue to execute every configured interval until interrupted (Ctrl+C).
+   When running with Postgres (see docker-compose), provide `PG_HOST`, `PG_PORT`, `PG_USER`, `PG_PASSWORD`, and `PG_DATABASE` so prediction payloads are persisted automatically.
 
 3. **Execute the compiled output (after `npm run build`)**
    ```bash
-   node dist/index.js
+   node training/dist/index.js
    ```
 
 4. **Optional verifications**
@@ -243,6 +248,38 @@ This entry point is how you interact with the system in batch mode.
    - Monitor console output for JSON decisions; integrate this output into downstream strategy components as needed.
    - Inspect the log file for historical predictions, configuration summaries, and failure diagnostics.
    - Check the `MODEL_STORE_PATH` directory to confirm `model.json` and `weights.bin` are being updated per symbol.
+   - If the websocket API is running, connect to `ws://<host>:<API_PORT>/ws` to receive live prediction payloads as they are inserted into Postgres.
+
+### Docker One-Liner
+
+```bash
+docker compose up --build
+```
+
+This boots the trainer (Node.js), Postgres, the websocket API (Go), and the React dashboard. By default the dashboard is reachable at `http://localhost:4173` and the websocket at `ws://localhost:8080/ws` (configurable via compose environment variables).
+
+Or use the provided `Makefile`:
+
+```bash
+make up      # build images and start the stack
+make down    # stop everything
+make logs    # tail all service logs
+```
+
+Sample environment files are provided as `.env.docker.local.example` and `.env.docker.prod.example`. Copy one to `.env` (Docker Compose loads it automatically) and adjust values as needed—particularly `VITE_WS_URL` when exposing the websocket through Cloudflare tunnels.
+
+## Websocket API
+
+- Build locally via `cd api && go build ./...`.
+- Run the server (for local testing) with `go run ./api/cmd/wsapi`.
+- When running through Docker Compose, the service listens on `/ws` (default port 8080). Every insert into the `predictions` table triggers a Postgres `NOTIFY`, which the API broadcasts to subscribed websocket clients as raw JSON payloads.
+
+## React Dashboard (`fed/`)
+
+- Install dependencies with `cd fed && npm install`.
+- Set the websocket endpoint via `VITE_WS_URL` (defaults to `ws://localhost:8080/ws`).
+- Start the dev server using `npm run dev`; the UI shows descriptive context on the left and a live feed of prediction cards on the right, with the newest payload inserted at the top.
+- Build for production using `npm run build` (outputs to `fed/dist/`).
 
 ---
 
@@ -253,5 +290,8 @@ This entry point is how you interact with the system in batch mode.
 - **Custom risk logic** – Modify `applyRiskMap` if you need advanced exposure curves.
 - **Adding persistence** – Persist trained weights by calling `model.save` inside `tradingEngine.ts` if you want continuity between runs.
 - **Debugging data issues** – Log the intermediate `TradeBar`s or feature matrices to confirm normalization and labeling when experimenting with new symbols.
+- **Database persistence** – The TypeScript runtime can insert each prediction into Postgres. Configure `PG_HOST`, `PG_PORT`, `PG_USER`, `PG_PASSWORD`, and `PG_DATABASE` (defaults provided in `docker-compose.yml`).
+- **Websocket API** – The `api/` service (Go) listens on `/ws` and streams new prediction payloads using Postgres `LISTEN/NOTIFY`. Build locally with `cd api && go build ./...` or run via Docker Compose.
+- **React dashboard** – The `fed/` app consumes the websocket stream. Start with `npm run dev` (after configuring `VITE_WS_URL`) to visualise predictions in real time.
 
 By following the steps above, you can understand, configure, and run the neural trading application from raw KuCoin trades through to exposure-adjusted decisions. Feel free to build additional tooling or dashboards on top of the JSON output emitted by the CLI.
