@@ -67,6 +67,10 @@ func (s *Server) HandleWS(w http.ResponseWriter, r *http.Request) {
 	client := hub.NewWSClient(conn)
 	s.hub.Register(client)
 	log.Info("client connected", "remote", r.RemoteAddr)
+	go client.Run(func() {
+		s.hub.Unregister(client)
+		log.Info("client disconnected", "remote", r.RemoteAddr)
+	})
 }
 
 func (s *Server) Close() {
