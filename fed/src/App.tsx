@@ -150,6 +150,35 @@ export const App = () => {
               Newest predictions appear at the top of the feed.
             </p>
           </div>
+          <div className="mt-6 rounded-lg border border-border bg-muted/40 p-4 text-sm">
+            <p className="font-medium mb-2">What the metrics mean</p>
+            <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
+              <li>
+                <span className="text-foreground font-medium">Probability</span>: chance the next bar closes
+                higher than the current bar.
+              </li>
+              <li>
+                <span className="text-foreground font-medium">Exposure</span>: position size after the risk map,
+                scaled by conviction and volatility.
+              </li>
+              <li>
+                <span className="text-foreground font-medium">Forecast volatility</span>: near‑term volatility
+                estimate from recent returns.
+              </li>
+              <li>
+                <span className="text-foreground font-medium">Bars</span>: candles available in this cycle; more bars
+                provide more context.
+              </li>
+              <li>
+                <span className="text-foreground font-medium">Samples</span>: training windows used before
+                inference; 0 means inference only.
+              </li>
+              <li>
+                <span className="text-foreground font-medium">Window</span>: input shape `[rows × cols]` used by the
+                model.
+              </li>
+            </ul>
+          </div>
         </section>
 
         <section className="md:w-3/5 flex flex-col">
