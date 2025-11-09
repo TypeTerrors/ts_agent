@@ -21,6 +21,7 @@ func main() {
 	}
 
 	http.HandleFunc("/ws", srv.HandleWS)
+	http.HandleFunc("/recent", srv.HandleRecent)
 
 	port := os.Getenv("API_PORT")
 	if port == "" {

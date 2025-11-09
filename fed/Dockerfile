@@ -3,7 +3,9 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 ARG VITE_WS_URL
+ARG VITE_WS_PING_MS
 ENV VITE_WS_URL=${VITE_WS_URL}
+ENV VITE_WS_PING_MS=${VITE_WS_PING_MS}
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .

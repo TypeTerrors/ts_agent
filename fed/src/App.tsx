@@ -35,16 +35,70 @@ export const App = () => {
     return base ?? "ws://localhost:8080/ws";
   }, []);
 
+  const pingMs = useMemo(() => {
+    const raw = import.meta.env.VITE_WS_PING_MS as string | undefined;
+    const n = raw ? Number(raw) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : 25000;
+  }, []);
+
+  const apiRecentUrl = useMemo(() => {
+    const explicit = import.meta.env.VITE_API_URL as string | undefined;
+    if (explicit) {
+      return `${explicit.replace(/\/$/, "")}/recent`;
+    }
+    // Derive from wsUrl: ws://host:port/ws -> http://host:port/recent
+    try {
+      const u = new URL(wsUrl);
+      u.protocol = u.protocol === "wss:" ? "https:" : "http:";
+      // Trim a trailing /ws or /ws/
+      u.pathname = u.pathname.replace(/\/?ws\/?$/, "");
+      u.pathname = (u.pathname.endsWith("/") ? u.pathname.slice(0, -1) : u.pathname) + "/recent";
+      u.search = "";
+      u.hash = "";
+      return u.toString();
+    } catch {
+      return "http://localhost:8080/recent";
+    }
+  }, [wsUrl]);
+
   useEffect(() => {
+    // 1) Prime the dashboard with recent predictions
+    const ac = new AbortController();
+    fetch(apiRecentUrl, { signal: ac.signal })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data: PredictionPayload[] = await res.json();
+        // Ensure array and newest-first ordering retained
+        if (Array.isArray(data)) setPredictions(data);
+      })
+      .catch((err) => {
+        console.error("Failed to fetch recent predictions", err);
+      });
+
+    // 2) Connect websocket for live updates
     const socket = new WebSocket(wsUrl);
+    let pingTimer: number | undefined;
 
     socket.onopen = () => {
       setStatus("Connected");
+      // Start application-level heartbeat every 25s
+      pingTimer = window.setInterval(() => {
+        if (socket.readyState === WebSocket.OPEN) {
+          const msg = { type: "ping", ts: new Date().toISOString() };
+          socket.send(JSON.stringify(msg));
+          console.debug("WS ping sent", msg);
+        }
+      }, pingMs);
     };
 
     socket.onmessage = (event) => {
       try {
-        const payload: PredictionPayload = JSON.parse(event.data);
+        const data = JSON.parse(event.data);
+        if (data && data.type === "pong") {
+          console.debug("WS pong received", data);
+          return;
+        }
+        const payload: PredictionPayload = data;
         setPredictions((prev) => [
           {
             ...payload,
@@ -53,12 +107,14 @@ export const App = () => {
           ...prev,
         ]);
       } catch (error) {
+        // Non-JSON payloads are ignored; keep logs for debugging
         console.error("Failed to parse websocket payload", error);
       }
     };
 
     socket.onclose = () => {
       setStatus("Disconnected");
+      if (pingTimer) window.clearInterval(pingTimer);
     };
 
     socket.onerror = (event) => {
@@ -67,9 +123,11 @@ export const App = () => {
     };
 
     return () => {
+      ac.abort();
+      if (pingTimer) window.clearInterval(pingTimer);
       socket.close();
     };
-  }, [wsUrl]);
+  }, [wsUrl, apiRecentUrl, pingMs]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -94,9 +152,9 @@ export const App = () => {
           </div>
         </section>
 
-        <section className="md:w-3/5">
+        <section className="md:w-3/5 flex flex-col">
           <h2 className="text-2xl font-semibold mb-4">Live predictions</h2>
-          <div className="space-y-4">
+          <div className="max-h-[75vh] overflow-y-auto pr-2 space-y-4">
             {predictions.length === 0 ? (
               <Card>
                 <CardHeader>

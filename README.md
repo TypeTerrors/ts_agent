@@ -273,11 +273,21 @@ Sample environment files are provided as `.env.docker.local.example` and `.env.d
 - Build locally via `cd api && go build ./...`.
 - Run the server (for local testing) with `go run ./api/cmd/wsapi`.
 - When running through Docker Compose, the service listens on `/ws` (default port 8080). Every insert into the `predictions` table triggers a Postgres `NOTIFY`, which the API broadcasts to subscribed websocket clients as raw JSON payloads.
+- A simple HTTP endpoint is also available at `GET /recent` to fetch the most recent predictions (default `limit=10`; configurable via `?limit=`). Example: `curl http://localhost:8080/recent?limit=10`.
+
+### Heartbeat configuration
+
+- The server sends websocket PING control frames on an interval to keep intermediaries (e.g., Cloudflare tunnels) from closing idle connections, and expects a PONG in response. These are configurable via environment variables:
+  - `WS_PING_SECONDS` – interval between server pings (default `25` seconds). Accepts either an integer (seconds) or a Go duration string (e.g., `30s`, `1m`).
+  - `WS_PONG_WAIT_SECONDS` – read deadline extension after receiving a PONG (default `60` seconds, but at least `2× WS_PING_SECONDS`).
+
+The frontend also sends a lightweight JSON heartbeat `{type:"ping"}` on the same cadence and logs `{type:"pong"}` responses for visibility.
 
 ## React Dashboard (`fed/`)
 
 - Install dependencies with `cd fed && npm install`.
 - Set the websocket endpoint via `VITE_WS_URL` (defaults to `ws://localhost:8080/ws`).
+- Optional heartbeat interval via `VITE_WS_PING_MS` (defaults to `25000` ms). This controls how often the UI sends `{type:"ping"}`.
 - Start the dev server using `npm run dev`; the UI shows descriptive context on the left and a live feed of prediction cards on the right, with the newest payload inserted at the top.
 - Build for production using `npm run build` (outputs to `fed/dist/`).
 
