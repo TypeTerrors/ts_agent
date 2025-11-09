@@ -40,7 +40,7 @@ const ensureLogDir = async () => {
   logDirEnsured = true;
 };
 
-const writeLog = async (message: string) => {
+export const writeLog = async (message: string) => {
   const timestamp = new Date().toISOString();
   const formatted = `[${timestamp}] ${message}`;
   console.log(formatted);

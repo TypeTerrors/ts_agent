@@ -273,13 +273,41 @@ Sample environment files are provided as `.env.docker.local.example` and `.env.d
 - Build locally via `cd api && go build ./...`.
 - Run the server (for local testing) with `go run ./api/cmd/wsapi`.
 - When running through Docker Compose, the service listens on `/ws` (default port 8080). Every insert into the `predictions` table triggers a Postgres `NOTIFY`, which the API broadcasts to subscribed websocket clients as raw JSON payloads.
+- A simple HTTP endpoint is also available at `GET /recent` to fetch the most recent predictions (default `limit=10`; configurable via `?limit=`). Example: `curl http://localhost:8080/recent?limit=10`.
+
+### Heartbeat configuration
+
+- The server sends websocket PING control frames on an interval to keep intermediaries (e.g., Cloudflare tunnels) from closing idle connections, and expects a PONG in response. These are configurable via environment variables:
+  - `WS_PING_SECONDS` – interval between server pings (default `25` seconds). Accepts either an integer (seconds) or a Go duration string (e.g., `30s`, `1m`).
+  - `WS_PONG_WAIT_SECONDS` – read deadline extension after receiving a PONG (default `60` seconds, but at least `2× WS_PING_SECONDS`).
+
+The frontend also sends a lightweight JSON heartbeat `{type:"ping"}` on the same cadence and logs `{type:"pong"}` responses for visibility.
 
 ## React Dashboard (`fed/`)
 
 - Install dependencies with `cd fed && npm install`.
 - Set the websocket endpoint via `VITE_WS_URL` (defaults to `ws://localhost:8080/ws`).
+- Optional heartbeat interval via `VITE_WS_PING_MS` (defaults to `25000` ms). This controls how often the UI sends `{type:"ping"}`.
 - Start the dev server using `npm run dev`; the UI shows descriptive context on the left and a live feed of prediction cards on the right, with the newest payload inserted at the top.
 - Build for production using `npm run build` (outputs to `fed/dist/`).
+
+### Prediction Cards Explained
+
+Each card represents one model inference persisted to Postgres and streamed to the UI.
+
+- Symbol: Trading pair for which the inference was produced (e.g., `BTC-USDT`).
+- Timestamp: The time the payload was created or received.
+- Probability: Model-estimated probability that the next bar will close higher than the current bar. Displayed as a percentage (e.g., `13.59%`). Values near 50% indicate low directional edge; values closer to 0%/100% indicate stronger directional conviction. This is not a price forecast—only directional likelihood for the immediate next bar.
+- Exposure: Final position sizing after the risk map is applied, within `[-100%, 100%]`. Positive values indicate long bias, negative values indicate short bias. Exposure scales with conviction and inversely with forecast volatility, and is clipped to the configured max exposure. This number is what you would trade in a simple proportional strategy.
+- Forecast volatility: A near-term volatility estimate (e.g., `3.67e-5`) computed from recent log returns. Lower values imply calmer markets; higher values imply choppier markets. The risk map reduces exposure as this value rises.
+- Bars: How many candles were available after aggregation for this cycle (e.g., `68`). A larger number generally provides more context for features, but does not directly indicate training length.
+- Samples: The number of windowed samples used to train or fine‑tune the model before inference (e.g., `3`). `0` means the model skipped training in that cycle and only performed inference on the latest window.
+- Window: The shape of the input matrix `[rows × cols]` used for inference (e.g., `64×22`). `rows` equals the time steps per window; `cols` equals engineered feature count. This determines the temporal receptive field the model sees per inference.
+
+Front-end layout
+
+- Left panel: Context about the system, current connection status, and where the websocket is connected.
+- Right panel: A scrollable feed of the newest predictions at the top (limited to the viewport height for usability). When the page first loads, the UI queries `GET /recent` to seed the list, then listens for live updates via the websocket.
 
 ---
 
